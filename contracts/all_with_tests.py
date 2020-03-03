@@ -162,9 +162,9 @@ class Dex(sp.Contract):
                  delegated: sp.TKeyHash):
         self.init(
             feeRate=sp.nat(feeRate),
-            tezPool=sp.nat(0),
+            tezPool=sp.mutez(0),
             tokenPool=sp.nat(0),
-            invariant=sp.nat(0),
+            invariant=sp.mutez(0),
             totalShares=sp.nat(0),
             tokenAddress=tokenAddress,
             factoryAddress=factoryAddress,
@@ -174,25 +174,25 @@ class Dex(sp.Contract):
             candidates=sp.big_map(tkey=sp.TAddress, tvalue=sp.TKeyHash),
             # sp.TKeyHash, sp.TNat
             votes=sp.big_map(tkey=sp.TKeyHash, tvalue=sp.TNat),
-            delegated=sp.key_hash(delegated),
-            address=sp.set(sp.TAddress)
+            delegated=delegated,
+            address=tokenAddress
         )
         self.data.address = sp.to_address(sp.self)
 
     @sp.entry_point
     def InitializeExchange(self, params):
         token_amount = sp.as_nat(params.token_amount)
-        candidate = sp.key_hash(params.candidate)
+        candidate = params.candidate
 
-        sp.verify(self.data.invariant == 0, message="Wrong invariant")
+        sp.verify(self.data.invariant == sp.mutez(0), message="Wrong invariant")
         sp.verify(self.data.totalShares == 0, message="Wrong totalShares")
         sp.verify(((sp.amount > sp.mutez(1)) & (
             sp.amount < sp.tez(500000000))), message="Wrong amount")
         sp.verify(token_amount > sp.nat(10), message="Wrong tokenAmount")
 
         self.data.tokenPool = token_amount
-        self.data.tezPool = sp.mutez(sp.amount)
-        self.data.invariant = self.data.tezPool * self.data.tokenPool
+        self.data.tezPool = sp.amount
+        self.data.invariant = sp.split_tokens(self.data.tezPool, self.data.tokenPool, sp.nat(1))
         self.data.shares[sp.sender] = sp.nat(1000)
         self.data.totalShares = sp.nat(1000)
 
@@ -430,12 +430,12 @@ class Dex(sp.Contract):
         sp.verify(sp.amount > sp.mutez(0), message="Wrong amount")
         sp.verify(minShares > sp.nat(0), message="Wrong tokenAmount")
 
-        tezPerShare = sp.as_nat(self.data.tezPool / self.data.totalShares)
+        tezPerShare = sp.split_tokens(self.data.tezPool, sp.nat(1), self.data.totalShares)
 
-        sp.verify(sp.amount >= sp.mutez(tezPerShare),
+        sp.verify(sp.amount >= tezPerShare,
                   message="Wrong tezPerShare")
 
-        sharesPurchased = sp.as_nat(sp.mutez(sp.amount) / tezPerShare)
+        sharesPurchased = sp.amount / tezPerShare
 
         sp.verify(sharesPurchased >= minShares,
                   message="Wrong sharesPurchased")
@@ -444,7 +444,7 @@ class Dex(sp.Contract):
         tokensRequired = sharesPurchased * tokensPerShare
         share = sp.local("share", self.data.shares.get(sp.sender, 0)).value
         self.data.shares[sp.sender] = share + sharesPurchased
-        self.data.tezPool += sp.mutez(sp.amount)
+        self.data.tezPool += sp.amount
         self.data.tokenPool += tokensRequired
         self.data.invariant = self.data.tezPool * self.data.tokenPool
         self.data.totalShares += sharesPurchased
@@ -486,9 +486,9 @@ class Dex(sp.Contract):
         share = sp.local("share", self.data.shares.get(sp.sender, 0)).value
         sp.verify(sharesBurned > share, message="Sender shares are too low")
         self.data.shares[sp.sender] = abs(share - sharesBurned)
-        tezPerShare = sp.nat(self.data.tezPool / self.data.totalShares)
+        tezPerShare = sp.split_tokens(self.data.tezPool, sp.nat(1), self.data.totalShares)
         tokensPerShare = sp.nat(self.data.tokenPool / self.data.totalShares)
-        tezDivested = tezPerShare * sharesBurned
+        tezDivested = sp.split_tokens(tezPerShare, sharesBurned, sp.nat(1))
         tokensDivested = tokensPerShare * sharesBurned
 
         sp.verify(tezDivested >= minTez, message="Wrong minTez")
@@ -498,9 +498,9 @@ class Dex(sp.Contract):
         self.data.tezPool -= tezDivested
         self.data.tokenPool -= tokensDivested
         sp.if self.data.totalShares == 0:
-            self.data.invariant = 0
+            self.data.invariant = sp.mutez(0)
         sp.else:
-            self.data.invariant = self.data.tezPool * self.data.tokenPool
+            self.data.invariant = sp.split_tokens(self.data.tezPool, self.data.tokenPool, sp.nat(1))
 
         sp.if self.data.candidates.contains(sp.sender):
             prevVotes = self.data.votes.get(self.data.candidates[sp.sender], 0)
@@ -515,18 +515,13 @@ class Dex(sp.Contract):
             entry_point="Transfer"
         ).open_some()
 
-        receiver_contract = sp.contract(
-            sp.TUnit,
-            address=sp.sender
-        ).open_some()
-
         sp.transfer(sp.record(account_from=self.data.address,
                               destination=sp.sender,
                               value=tokensDivested),
                     sp.mutez(0),
                     token_contract)
 
-        sp.send(sp.mutez(tezDivested), receiver_contract)
+        sp.send(sp.sender, tezDivested)
 # Tests
     @sp.add_test(name="QuipuSwap")
     def test():
