@@ -1,0 +1,22 @@
+{
+  "name": "quipuswapsmartpy",
+  "version": "1.0.0",
+  "description": "Quipu Swap Rewrite on SmartPy language",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "kek"
+  },
+  "keywords": [
+    "SmartPy",
+    "QuipuSwap",
+    "Tezos"
+  ],
+  "author": "Illia Likhoshva",
+  "license": "ISC",
+  "dependencies": {
+    "conseiljs": "^0.3.7"
+  }
+}
