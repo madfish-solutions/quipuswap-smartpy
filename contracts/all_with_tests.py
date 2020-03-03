@@ -222,14 +222,14 @@ class Dex(sp.Contract):
                    minTokensOut: sp.TNat):
         this = self.data.address
 
-        sp.verify(tezIn > 0, message="Wrong tezIn")
+        sp.verify(tezIn > sp.mutez(0), message="Wrong tezIn")
         sp.verify(minTokensOut > 0, message="Wrong minTokensOut")
 
-        fee = tezIn / self.data.feeRate  # TODO: ????
+        fee = sp.fst(sp.ediv(tezIn, self.data.feeRate).open_some())  # TODO: ????
         newTezPool = sp.local("newTezPool", self.data.tezPool).value + tezIn
         tempTezPool = abs(newTezPool - fee)
-        newTokenPool = sp.local(
-            "newTokenPool", self.data.invariant).value / tempTezPool
+        newTokenPool = sp.fst(sp.ediv(sp.local(
+            "newTokenPool", self.data.invariant).value, tempTezPool).open_some())
         tokensOut = abs(
             sp.local("tokensOut", self.data.tokenPool).value - newTokenPool)
 
@@ -238,7 +238,7 @@ class Dex(sp.Contract):
 
         self.data.tezPool = newTezPool
         self.data.tokenPool = newTokenPool
-        self.data.invariant = newTezPool * newTokenPool
+        self.data.invariant = sp.split_tokens(newTezPool, newTokenPool, sp.nat(1))
         token_contract = sp.contract(
             sp.TRecord(account_from=sp.TAddress,
                        destination=sp.TAddress,
@@ -281,17 +281,17 @@ class Dex(sp.Contract):
         newTokenPool = sp.local(
             "newTokenPool", self.data.tokenPool).value + tokensIn
         tempTokenPool = abs(newTokenPool - fee)
-        newTezPool = sp.local(
-            "newTezPool", self.data.invariant).value / tempTokenPool
+        newTezPool = sp.fst(sp.ediv(sp.local(
+            "newTezPool", self.data.invariant).value, tempTokenPool).open_some())
         tezOut = abs(
             sp.local("tezOut", self.data.tokenPool).value - newTezPool)
 
         sp.verify(tezOut >= minTezOut, message="Wrong minTezOut")
-        sp.verify(tezOut <= self.data.tezPool, message="Wrong tezPool")
+        sp.verify(sp.mutez(tezOut) <= self.data.tezPool, message="Wrong tezPool")
 
         self.data.tezPool = newTezPool
         self.data.tokenPool = newTokenPool
-        self.data.invariant = newTezPool * newTokenPool
+        self.data.invariant = sp.mutez(newTezPool * newTokenPool)
 
         token_contract = sp.contract(
             sp.TRecord(account_from=sp.TAddress,
@@ -301,18 +301,13 @@ class Dex(sp.Contract):
             entry_point="Transfer"
         ).open_some()
 
-        receiver_contract = sp.contract(
-            sp.TUnit,
-            address=recipient
-        ).open_some()
 
         sp.transfer(sp.record(account_from=buyer,
                               destination=this,
                               value=tokensIn),
                     sp.mutez(0),
                     token_contract)
-        sp.send(sp.mutez(tezOut),
-                receiver_contract)
+        sp.send(recipient, sp.mutez(tezOut),)
 
     @sp.entry_point
     def TokenToTezPayment(self, params):
@@ -347,16 +342,15 @@ class Dex(sp.Contract):
         newTokenPool = sp.local(
             "newTokenPool", self.data.tokenPool).value + tokensIn
         tempTokenPool = abs(newTokenPool - fee)
-        newTezPool = sp.local(
-            "newTezPool", self.data.invariant).value / tempTokenPool
+        newTezPool = sp.fst(sp.ediv(sp.local(
+            "newTezPool", self.data.invariant).value, tempTokenPool).open_some())
         tezOut = abs(sp.local("tezOut", self.data.tezPool).value - newTezPool)
 
-        sp.verify(tezOut <= self.data.tezPool, message="Wrong tezPool")
+        sp.verify(sp.mutez(tezOut) <= self.data.tezPool, message="Wrong tezPool")
 
         self.data.tezPool = newTezPool
         self.data.tokenPool = newTokenPool
-        self.data.invariant = newTezPool * newTokenPool
-
+        self.data.invariant = sp.mutez(newTezPool * newTokenPool)
         token_contract = sp.contract(
             sp.TRecord(account_from=sp.TAddress,
                        destination=sp.TAddress,
@@ -419,7 +413,7 @@ class Dex(sp.Contract):
         sp.verify(sp.sender == self.data.factoryAddress,
                   message="Wrong minTezOut")
         return self.TezToToken(recipient=recipient,
-                               tezIn=sp.mutez(sp.amount),
+                               tezIn=sp.amount,
                                minTokensOut=minTokensOut)
 
     @sp.entry_point
@@ -435,18 +429,18 @@ class Dex(sp.Contract):
         sp.verify(sp.amount >= tezPerShare,
                   message="Wrong tezPerShare")
 
-        sharesPurchased = sp.amount / tezPerShare
+        sharesPurchased = sp.fst(sp.ediv(sp.amount, tezPerShare).open_some())
 
         sp.verify(sharesPurchased >= minShares,
                   message="Wrong sharesPurchased")
 
-        tokensPerShare = sp.as_nat(self.data.tokenPool / self.data.totalShares)
+        tokensPerShare = self.data.tokenPool / self.data.totalShares
         tokensRequired = sharesPurchased * tokensPerShare
         share = sp.local("share", self.data.shares.get(sp.sender, 0)).value
         self.data.shares[sp.sender] = share + sharesPurchased
         self.data.tezPool += sp.amount
         self.data.tokenPool += tokensRequired
-        self.data.invariant = self.data.tezPool * self.data.tokenPool
+        self.data.invariant = sp.split_tokens(self.data.tezPool, self.data.tokenPool, sp.nat(1))
         self.data.totalShares += sharesPurchased
         sp.if self.data.candidates.contains(sp.sender):
             prevVotes = self.data.votes.get(self.data.candidates[sp.sender], 0)

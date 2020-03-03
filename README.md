@@ -1,8 +1,13 @@
 # quipuswap-smartpy
 
 ###Initialize Smartpy
-#### for the official stable version
-`sh <(curl -s https://SmartPy.io/SmartPyBasic/SmartPy.sh) local-install ~`
+~~for the official stable version~~
+
+~~sh <(curl -s https://SmartPy.io/SmartPyBasic/SmartPy.sh) local-install~~
+
+#### for the dev version (not as stable as the stable version but reasonably stable, new incremental features are here)
+`sh <(curl -s https://SmartPy.io/SmartPyBasicDev/SmartPy.sh) local-install-dev ~`
+
 
 ####**Executing a SmartPy Script**
 
